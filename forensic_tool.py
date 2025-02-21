@@ -61,6 +61,19 @@ def hex_to_dec(value):
         return int(value, 16)  # Convert hex to decimal
     return pd.to_numeric(value, errors='coerce')  # Keep numeric values as is
 
+def delete_files(*files):
+    """Delete specified files if they exist."""
+    for file in files:
+        if file and os.path.exists(file):
+            os.remove(file)
+            print(f"🗑️ Deleted: {file}")
+
+def delete_amcache_files():
+    """Delete all Amcache output CSV files."""
+    amcache_files = glob.glob("amcache_output_*.csv")  # Matches all Amcache output files
+    for file in amcache_files:
+        os.remove(file)
+        print(f"🗑️ Deleted: {file}")
 
 def process_data():
     print("📂 Detecting latest forensic reports...")
@@ -134,7 +147,6 @@ def process_data():
         else:
             return "Unknown"
 
-
     merged_data['Forensic Analysis'] = merged_data.apply(analyze_file, axis=1)
 
     # Save the correlated forensic report
@@ -142,12 +154,24 @@ def process_data():
     merged_data.to_csv(correlated_output, index=False)
 
     print(f"✅ Correlated forensic report saved at: {correlated_output}")
+    delete_files(mftecmd_file, lecmd_file, amcache_unassociated_file)
+    delete_amcache_files()
 
-
+def cleanup_files():
+    """Delete all files in output_dir except Correlated_Forensic_Report.csv."""
+    for file in os.listdir(output_dir):
+        file_path = os.path.join(output_dir, file)
+        if os.path.isfile(file_path) and file != "Correlated_Forensic_Report.csv":
+            try:
+                os.remove(file_path)
+                print(f"🗑️ Deleted: {file}")
+            except Exception as e:
+                print(f"❌ Error deleting {file}: {e}") 
 
 if __name__ == "__main__":
     run_mftecmd()
     run_amcache_parser()
     run_lecmd_analysis()
     process_data()
+    cleanup_files()
     print("🎯 Forensic analysis completed! Check:", output_dir)
