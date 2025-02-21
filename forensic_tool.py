@@ -146,8 +146,8 @@ def process_data():
 
 
 if __name__ == "__main__":
-    #run_mftecmd()
-    #run_amcache_parser()
-    #run_lecmd_analysis()
+    run_mftecmd()
+    run_amcache_parser()
+    run_lecmd_analysis()
     process_data()
     print("🎯 Forensic analysis completed! Check:", output_dir)
