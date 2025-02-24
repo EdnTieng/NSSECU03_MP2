@@ -8,9 +8,9 @@ output_dir = r"C:\ToolOutputs"
 os.makedirs(output_dir, exist_ok=True)  # Ensure output directory exists
 
 # Paths to forensic tools (Update paths accordingly)
-mftecmd_path = r"C:\Users\eiden\Downloads\mp2\MFTECmd.exe"
-amcache_parser_path = r"C:\Users\eiden\Downloads\mp2\AmcacheParser.exe"
-lecmd_path = r"C:\Users\eiden\Downloads\mp2\LECmd.exe"
+mftecmd_path = r"C:\Users\eiden\OneDrive\Desktop\school shit\NSSECU3\MFTECmd.exe"
+amcache_parser_path = r"C:\Users\eiden\OneDrive\Desktop\school shit\NSSECU3\AmcacheParser.exe"
+lecmd_path = r"C:\Users\eiden\OneDrive\Desktop\school shit\NSSECU3\LECmd.exe"
 
 
 def run_command(command):
@@ -55,25 +55,18 @@ def load_csv(file_path):
     """Load CSV file."""
     return pd.read_csv(file_path, low_memory=False)
 
+
 # Function to convert hex to decimal
 def hex_to_dec(value):
     if isinstance(value, str) and value.startswith("0x"):
         return int(value, 16)  # Convert hex to decimal
     return pd.to_numeric(value, errors='coerce')  # Keep numeric values as is
 
-def delete_files(*files):
-    """Delete specified files if they exist."""
-    for file in files:
-        if file and os.path.exists(file):
-            os.remove(file)
-            print(f"🗑️ Deleted: {file}")
 
-def delete_amcache_files():
-    """Delete all Amcache output CSV files."""
-    amcache_files = glob.glob("amcache_output_*.csv")  # Matches all Amcache output files
-    for file in amcache_files:
-        os.remove(file)
-        print(f"🗑️ Deleted: {file}")
+def rename_columns(df, prefix):
+    """Renames columns by adding a prefix to indicate the tool they came from."""
+    return df.rename(columns={col: f"[{prefix}] {col}" for col in df.columns})
+
 
 def process_data():
     print("📂 Detecting latest forensic reports...")
@@ -91,28 +84,28 @@ def process_data():
 
     print("📊 Loading and processing data...")
 
-    # Load data
-    mfte_data = load_csv(mftecmd_file)
-    lecmd_data = load_csv(lecmd_file)
-    amcache_data = load_csv(amcache_unassociated_file)
+     # Load and rename columns
+    mfte_data = rename_columns(load_csv(mftecmd_file), "MFTECmd")
+    lecmd_data = rename_columns(load_csv(lecmd_file), "LECmd")
+    amcache_data = rename_columns(load_csv(amcache_unassociated_file), "Amcache")
 
     # Apply conversion to LECmd columns
-    lecmd_data['TargetMFTEntryNumber'] = lecmd_data['TargetMFTEntryNumber'].apply(hex_to_dec)
-    lecmd_data['TargetMFTSequenceNumber'] = lecmd_data['TargetMFTSequenceNumber'].apply(hex_to_dec)
+    lecmd_data['[LECmd] TargetMFTEntryNumber'] = lecmd_data['[LECmd] TargetMFTEntryNumber'].apply(hex_to_dec)
+    lecmd_data['[LECmd] TargetMFTSequenceNumber'] = lecmd_data['[LECmd] TargetMFTSequenceNumber'].apply(hex_to_dec)
 
     # Convert necessary columns to numeric for merging
-    mfte_data['EntryNumber'] = pd.to_numeric(mfte_data['EntryNumber'], errors='coerce')
-    mfte_data['SequenceNumber'] = pd.to_numeric(mfte_data['SequenceNumber'], errors='coerce')
-    lecmd_data['TargetMFTEntryNumber'] = pd.to_numeric(lecmd_data['TargetMFTEntryNumber'], errors='coerce')
-    lecmd_data['TargetMFTSequenceNumber'] = pd.to_numeric(lecmd_data['TargetMFTSequenceNumber'], errors='coerce')
+    mfte_data['[MFTECmd] EntryNumber'] = pd.to_numeric(mfte_data['[MFTECmd] EntryNumber'], errors='coerce')
+    mfte_data['[MFTECmd] SequenceNumber'] = pd.to_numeric(mfte_data['[MFTECmd] SequenceNumber'], errors='coerce')
+    lecmd_data['[LECmd] TargetMFTEntryNumber'] = pd.to_numeric(lecmd_data['[LECmd] TargetMFTEntryNumber'], errors='coerce')
+    lecmd_data['[LECmd] TargetMFTSequenceNumber'] = pd.to_numeric(lecmd_data['[LECmd] TargetMFTSequenceNumber'], errors='coerce')
 
     # Merge MFTECmd with LECmd using MFT Entry Number
     merged_data = pd.merge(
         mfte_data, 
         lecmd_data, 
-        left_on=['EntryNumber', 'SequenceNumber'], 
-        right_on=['TargetMFTEntryNumber', 'TargetMFTSequenceNumber'], 
-        how='outer',  # 🔥 Changed from 'left' to 'outer' to keep LNK-only files
+        left_on=['[MFTECmd] EntryNumber', '[MFTECmd] SequenceNumber'],
+        right_on=['[LECmd] TargetMFTEntryNumber', '[LECmd] TargetMFTSequenceNumber'],
+        how='outer',
         suffixes=('_MFT', '_LNK')
     )
 
@@ -120,19 +113,19 @@ def process_data():
     merged_data = pd.merge(
         merged_data, 
         amcache_data, 
-        left_on='FileName', 
-        right_on='Name', 
-        how='outer'  # 🔥 Changed from 'left' to 'outer' to keep Amcache-only files
+        left_on='[MFTECmd] FileName', 
+        right_on='[Amcache] Name', 
+        how='outer'
     )
 
     # Keep only rows where the file appears in either Amcache (executed) or LNK (accessed)
-    merged_data = merged_data[(pd.notna(merged_data['Name'])) | (pd.notna(merged_data['TargetMFTEntryNumber']))]
+    merged_data = merged_data[(pd.notna(merged_data['[Amcache] Name'])) | (pd.notna(merged_data['[LECmd] TargetMFTEntryNumber']))]
 
     # Add forensic analysis column
     def analyze_file(row):
-        in_mft = pd.notna(row['EntryNumber'])
-        in_amcache = pd.notna(row['Name'])
-        in_lnk = pd.notna(row['TargetMFTEntryNumber'])
+        in_mft = pd.notna(row['[MFTECmd] EntryNumber'])
+        in_amcache = pd.notna(row['[Amcache] Name'])
+        in_lnk = pd.notna(row['[LECmd] TargetMFTEntryNumber'])
 
         if in_mft and in_amcache and in_lnk:
             return "Executed & Accessed & Exists in MFT"  # 🔥 New condition
@@ -154,8 +147,6 @@ def process_data():
     merged_data.to_csv(correlated_output, index=False)
 
     print(f"✅ Correlated forensic report saved at: {correlated_output}")
-    delete_files(mftecmd_file, lecmd_file, amcache_unassociated_file)
-    delete_amcache_files()
 
 def cleanup_files():
     """Delete all files in output_dir except Correlated_Forensic_Report.csv."""
